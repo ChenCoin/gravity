@@ -40,6 +40,10 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  static final String suffix = "${Uri.base.origin}/page";
+
+  var pageUrl = Uri.parse("$suffix/index.md");
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -78,22 +82,28 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget buildFuture() {
-    final url = Uri.parse("${Uri.base.origin}/page/index.md");
     final config = MarkdownConfig(configs: [
       LinkConfig(onTap: (url) {
-        launchUrl(Uri.parse(url));
+        var isNetUrl = url.startsWith('http://') || url.startsWith('https://');
+        if (!isNetUrl) {
+          setState(() {
+            pageUrl = Uri.parse("$suffix/$url");
+          });
+        } else {
+          launchUrl(Uri.parse(url));
+        }
       }),
       ImgConfig(builder: (String imgUrl, Map<String, String> attributes) {
         final isNetImage =
             imgUrl.startsWith('http://') || imgUrl.startsWith('https://');
-        final img = isNetImage ? imgUrl : "${Uri.base.origin}/page/$imgUrl";
+        final img = isNetImage ? imgUrl : "$suffix/$imgUrl";
         return Image.network(img, fit: BoxFit.cover, errorBuilder: (c, e, _) {
           return const Icon(Icons.broken_image, color: Colors.grey);
         });
       })
     ]);
     return FutureBuilder<String>(
-      future: mockNetworkData(url),
+      future: mockNetworkData(pageUrl),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
           if (snapshot.hasError) {
