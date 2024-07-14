@@ -1,3 +1,4 @@
+import 'package:gravity/conf_web.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// Markdown_Widget的图片处理
 /// 图片地址不是http开头的，转由flutter的系统Widget处理：Image.asset
 
+String suffix = "";
+
 void main() {
+  String rootPath = queryMeta("markdown-root", "content");
+  if (!rootPath.startsWith('/')) {
+    rootPath = "/$rootPath";
+  }
+  suffix = "${Uri.base.origin}$rootPath";
   runApp(const MyApp());
 }
 
@@ -25,27 +33,28 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.grey),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const HomePage(),
+      onUnknownRoute: (routeSettings) => MaterialPageRoute(
+        settings: routeSettings,
+        builder: (_) => const HomePage(),
+      ),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  static final String suffix = "${Uri.base.origin}/page";
-
-  var pageUrl = Uri.parse("$suffix/index.md");
-
+class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
+    var routePath = ModalRoute.of(context)?.settings.name ?? "/";
+    debugPrint("routePath: $routePath");
+    var pageUrl = routePath == "/" ? "$suffix/index.md" : "$suffix$routePath";
     return Scaffold(
       body: ConstrainedBox(
         constraints: const BoxConstraints.expand(),
@@ -55,7 +64,7 @@ class _MyHomePageState extends State<MyHomePage> {
               width: 720,
               margin: const EdgeInsets.all(8),
               decoration: createBoxDecoration(),
-              child: buildFuture(),
+              child: buildFuture(pageUrl, routePath),
             ),
           ),
         ),
@@ -81,29 +90,15 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Widget buildFuture() {
-    final config = MarkdownConfig(configs: [
-      LinkConfig(onTap: (url) {
-        var isNetUrl = url.startsWith('http://') || url.startsWith('https://');
-        if (!isNetUrl) {
-          setState(() {
-            pageUrl = Uri.parse("$suffix/$url");
-          });
-        } else {
-          launchUrl(Uri.parse(url));
-        }
-      }),
-      ImgConfig(builder: (String imgUrl, Map<String, String> attributes) {
-        final isNetImage =
-            imgUrl.startsWith('http://') || imgUrl.startsWith('https://');
-        final img = isNetImage ? imgUrl : "$suffix/$imgUrl";
-        return Image.network(img, fit: BoxFit.cover, errorBuilder: (c, e, _) {
-          return const Icon(Icons.broken_image, color: Colors.grey);
-        });
-      })
-    ]);
+  Widget buildFuture(String pageUrl, String routePath) {
+    debugPrint("pageUrl: $pageUrl, routePath: $routePath");
+    final parentPath = pageUrl.substring(0, pageUrl.lastIndexOf('/'));
+    final parentRoute = routePath.substring(0, routePath.lastIndexOf('/'));
+    debugPrint("parentPath: $parentPath, parentRoute: $parentRoute");
+    final config = MarkdownConfig(
+        configs: [urlConfig(parentPath, parentRoute), imgConfig(parentPath)]);
     return FutureBuilder<String>(
-      future: mockNetworkData(pageUrl),
+      future: mockNetworkData(Uri.parse(pageUrl)),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
           if (snapshot.hasError) {
@@ -137,7 +132,43 @@ class _MyHomePageState extends State<MyHomePage> {
       response.headers['content-type'] = 'text/plain; charset=utf-8';
       return Future(() => response.body);
     } catch (exception) {
-      return Future(() => "404");
+      return Future(() => "# 404");
     }
+  }
+
+  WidgetConfig urlConfig(String parentPath, String parentRoute) {
+    return LinkConfig(onTap: (url) {
+      // open new tab when it is normal url
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        launchUrl(Uri.parse(url));
+        return;
+      }
+      // reload markdown file when url is another markdown on server
+      if (url.endsWith('.md') || url.endsWith('.markdown')) {
+        debugPrint("url clicked: $url");
+        if (url.startsWith('/')) {
+          Navigator.pushNamed(context, url);
+          return;
+        }
+        Navigator.pushNamed(context, "$parentRoute/$url");
+        return;
+      }
+      // open new tab when it is local server url
+      launchUrl(Uri.parse("$parentPath/$url"));
+    });
+  }
+
+  WidgetConfig imgConfig(String parentPath) {
+    return ImgConfig(builder: (String imgUrl, Map<String, String> attributes) {
+      debugPrint("photo: $imgUrl $attributes");
+      final isNetImage =
+          imgUrl.startsWith('http://') || imgUrl.startsWith('https://');
+      final img = isNetImage ? imgUrl : "$parentPath/$imgUrl";
+      return Center(
+        child: Image.network(img, fit: BoxFit.cover, errorBuilder: (c, e, _) {
+          return const Icon(Icons.broken_image, color: Colors.grey);
+        }),
+      );
+    });
   }
 }
