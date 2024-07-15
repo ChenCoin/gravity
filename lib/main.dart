@@ -11,14 +11,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// Markdown_Widget的图片处理
 /// 图片地址不是http开头的，转由flutter的系统Widget处理：Image.asset
 
-String suffix = "";
+String prefix = "";
+String urlPrefix = "";
+String imgPrefix = "";
+String htmlTitle = "";
 
 void main() {
-  String rootPath = queryMeta("markdown-root", "content");
-  if (!rootPath.startsWith('/')) {
-    rootPath = "/$rootPath";
-  }
-  suffix = "${Uri.base.origin}$rootPath";
+  String origin = Uri.base.origin;
+  prefix = "$origin${queryHtmlMeta("markdown-root")}";
+  urlPrefix = "$origin${queryHtmlMeta("markdown-url-root")}";
+  imgPrefix = "$origin${queryHtmlMeta("markdown-img-root")}";
+  htmlTitle = queryHtmlTitle();
   runApp(const MyApp());
 }
 
@@ -28,7 +31,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: htmlTitle,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.grey),
         useMaterial3: true,
@@ -54,7 +57,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     var routePath = ModalRoute.of(context)?.settings.name ?? "/";
     debugPrint("routePath: $routePath");
-    var pageUrl = routePath == "/" ? "$suffix/index.md" : "$suffix$routePath";
+    var pageUrl = routePath == "/" ? "$prefix/index.md" : "$prefix$routePath";
     return Scaffold(
       body: ConstrainedBox(
         constraints: const BoxConstraints.expand(),
@@ -150,25 +153,73 @@ class _HomePageState extends State<HomePage> {
           Navigator.pushNamed(context, url);
           return;
         }
-        Navigator.pushNamed(context, "$parentRoute/$url");
+        Navigator.pushNamed(context, Uri.parse("$parentRoute/$url").path);
         return;
       }
       // open new tab when it is local server url
+      if (url.startsWith('/')) {
+        launchUrl(Uri.parse("$urlPrefix$url"));
+        return;
+      }
       launchUrl(Uri.parse("$parentPath/$url"));
     });
   }
 
+  // 跨域问题
   WidgetConfig imgConfig(String parentPath) {
     return ImgConfig(builder: (String imgUrl, Map<String, String> attributes) {
       debugPrint("photo: $imgUrl $attributes");
-      final isNetImage =
-          imgUrl.startsWith('http://') || imgUrl.startsWith('https://');
-      final img = isNetImage ? imgUrl : "$parentPath/$imgUrl";
+      // attributes包含src/alt/title
+      final src = formatImagePath(imgUrl, parentPath);
+      String alt = attributes['alt'] ?? "";
+      String title = attributes['title'] ?? "";
+      var suffix = cutSuffix(imgUrl);
+      if (alt.startsWith("audio:") || suffix.toLowerCase() == ".mp3") {
+        return audioBuilder(src, alt, title);
+      }
+      if (alt.startsWith("video:") || suffix.toLowerCase() == ".mp4") {
+        return videoBuilder(src, alt, title);
+      }
+      if (alt.startsWith("gif:") || suffix.toLowerCase() == ".gif") {
+        return gifBuilder(src, alt, title);
+      }
+
       return Center(
-        child: Image.network(img, fit: BoxFit.cover, errorBuilder: (c, e, _) {
+        child: Image.network(src, fit: BoxFit.cover, errorBuilder: (c, e, _) {
           return const Icon(Icons.broken_image, color: Colors.grey);
         }),
       );
     });
+  }
+
+  Widget audioBuilder(String src, String alt, String title) {
+    return const Center();
+  }
+
+  Widget videoBuilder(String src, String alt, String title) {
+    return const Center();
+  }
+
+  Widget gifBuilder(String src, String alt, String title) {
+    return const Center();
+  }
+
+  String formatImagePath(String url, String parentPath) {
+    final isNetUrl = url.startsWith('http://') || url.startsWith('https://');
+    if (isNetUrl) {
+      return url;
+    }
+    if (url.startsWith('/')) {
+      return Uri.parse("$imgPrefix$url").path;
+    }
+    return Uri.parse("$parentPath/$url").path;
+  }
+
+  String cutSuffix(String url) {
+    int suffixPoint = url.lastIndexOf('.');
+    if (suffixPoint >= 0) {
+      return url.substring(suffixPoint, url.length);
+    }
+    return "";
   }
 }

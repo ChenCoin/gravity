@@ -1,15 +1,18 @@
 import 'dart:html' show document;
-import 'package:flutter/material.dart';
 
-void webConfigure() {
-  debugPrint('configure web');
-  debugPrint('attributes: ${document.head?.attributes}');
-  debugPrint('dataset: ${queryMeta("description", "content")}');
+String queryMetaFromDocument(String name, String content) {
+  String meta = 'meta[name="$name"]';
+  return document.querySelector(meta)?.getAttribute(content) ?? "";
 }
 
-String queryMeta(String name, String content) {
-  return document.documentElement
-          ?.querySelector('meta[name="$name"]')
-          ?.getAttribute(content) ??
-      "";
+String queryHtmlMeta(String name) {
+  String root = queryMetaFromDocument(name, "content");
+  if (!root.startsWith('/')) {
+    root = "/$root";
+  }
+  return root;
+}
+
+String queryHtmlTitle() {
+  return document.title;
 }
